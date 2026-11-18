@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Manage Spotify playlists and Liked Songs."""
+import argparse
+import json
+import fcntl
+import os
+import re
+import shlex
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+def spotify_id(value, kind):
+    path = urlsplit(value)
+    if path.hostname == "open.spotify.com":
+        match = re.fullmatch(rf"/(?:intl-[\w-]+/)?{kind}/([A-Za-z0-9]{{22}})/?", path.path)
+        if match:
+            return match[1]
+    value = value.removeprefix(f"spotify:{kind}:")
+    if re.fullmatch("[A-Za-z0-9]{22}", value):
+        return value
+    raise ValueError(f"Expected a Spotify {kind} link, URI, or ID")
+
+
+def pages(api, path):
+    offset = 0
+    while True:
+        page = api("GET", path, params={"limit": 50, "offset": offset})
+        yield from page["items"]
+        if not page["next"] or not page["items"]:
+            return
+        offset += len(page["items"])
+
+
+def tracks(api, collection):
+    path = "/me/tracks" if collection == "favorites" else f"/playlists/{collection}/items"
+    for row in pages(api, path):
+        track = row.get("item") or row.get("track") or {}
+        if (track.get("uri") or "").startswith("spotify:track:") and not track.get("is_local"):
+            yield track
+
+
+def resolve(api, name):
+    if name.casefold() == "favorites":
+        return "favorites"
+    if name.casefold() == "norm" and os.getenv("SPOTIFY_NORM"):
+        return spotify_id(os.environ["SPOTIFY_NORM"], "playlist")
+    try:
+        return spotify_id(name, "playlist")
+    except ValueError:
+        pass
+    matches = [p["id"] for p in pages(api, "/me/playlists")
+               if p and p["name"].casefold() == name.casefold()]
+    if len(matches) != 1:
+        raise ValueError(f"{name!r} matched {len(matches)} playlists. Run playlists and use an ID.")
+    return matches[0]
+
+
+def update(api, collection, adding, uris):
+    for start in range(0, len(uris), 40):
+        batch = uris[start:start + 40]
+        if collection == "favorites":
+            api("PUT" if adding else "DELETE", "/me/library", params={"uris": ",".join(batch)})
+        else:
+            path = f"/playlists/{collection}/items"
+            if adding:
+                api("POST", path, json={"uris": batch})
+            else:
+                api("DELETE", path, json={"items": [{"uri": uri} for uri in batch]})
+
+
+def transfer(api, source, dest, args, folder):
+    if source == dest:
+        raise ValueError("Choose two different collections.")
+    before = dict.fromkeys(t["uri"] for t in tracks(api, source))
+    after = dict.fromkeys(t["uri"] for t in tracks(api, dest))
+    journal = folder / ("transfer-" + "-".join(sorted((source, dest))) + ".json")
+    operation = [args.command, source, dest]
+    if args.command == "move":
+        operation.append(spotify_id(args.track, "track"))
+    if journal.exists():
+        pending = json.loads(journal.read_text())
+        if pending["operation"] != operation:
+            raise ValueError("Resume the interrupted transfer first: " + " ".join(pending["operation"]))
+        forward, reverse = pending["forward"], pending["reverse"]
+    else:
+        reverse = []
+        if args.command == "swap":
+            forward = [uri for uri in before if uri not in after]
+            reverse = [uri for uri in after if uri not in before]
+        elif args.command == "move":
+            uri = "spotify:track:" + spotify_id(args.track, "track")
+            if uri not in before and uri not in after:
+                raise ValueError("Track absent from both collections")
+            forward = [uri]
+        else:
+            forward = list(before)
+        temp = journal.with_suffix(".tmp")
+        temp.write_text(json.dumps(dict(operation=operation, forward=forward, reverse=reverse)))
+        temp.replace(journal)
+    update(api, dest, True, [u for u in forward if u not in after])
+    update(api, source, True, [u for u in reverse if u not in before])
+    update(api, source, False, [u for u in forward if u in before])
+    update(api, dest, False, [u for u in reverse if u in after])
+    journal.unlink()
+    return {"source": source, "destination": dest, "forward": len(forward), "reverse": len(reverse)}
+
+
+def track_summary(t):
+    return dict(id=t["id"], name=t["name"], artists=", ".join(a["name"] for a in t["artists"]),
+                album=(t.get("album") or {}).get("name"))
+
+
+def run(args, api, folder):
+    if args.command == "playlists":
+        return [dict(id=p["id"], name=p["name"]) for p in pages(api, "/me/playlists") if p]
+    if args.command == "search":
+        hits = api("GET", "/search", params={"type": "track", "q": args.query, "limit": 10})
+        return [track_summary(t) for t in hits["tracks"]["items"] if t and t.get("id")]
+    if args.command == "create":
+        p = api("POST", "/me/playlists", json={"name": args.name, "public": False})
+        return dict(id=p["id"], name=p["name"])
+    dest = resolve(api, args.collection)
+    if args.command == "list":
+        return [track_summary(t) for t in tracks(api, dest)]
+    if args.command == "add":
+        uri = "spotify:track:" + spotify_id(args.track, "track")
+        present = any(t["uri"] == uri for t in tracks(api, dest))
+        if not present:
+            update(api, dest, True, [uri])
+        return dict(destination=dest, track=uri, added=not present)
+    source = args.source or ("norm" if dest == "favorites" else "favorites")
+    return transfer(api, resolve(api, source), dest, args, folder)
+
+
+def load_settings(path):
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        key, separator, value = line.strip().removeprefix("export ").partition("=")
+        key = key.strip()
+        if separator and key in {"SPOTIPY_CLIENT_ID", "SPOTIFY_NORM"}:
+            value = re.split(r"\s+#", value.strip(), maxsplit=1)[0].rstrip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                value = value[1:-1]
+            os.environ.setdefault(key, value)
+
+
+def choose_action(parser):
+    parser.print_help()
+    while True:
+        try:
+            line = input("Spotify command (or q to quit)> ").strip()
+            if line.lower() == "q":
+                parser.exit()
+            args = parser.parse_args(shlex.split(line))
+            if args.command:
+                return args
+        except (EOFError, KeyboardInterrupt):
+            parser.exit()
+        except ValueError as exc:
+            print(exc)
+
+
+GUIDE = """Use playlists to discover names and IDs. Quote names with spaces.
+Names match exactly, ignoring case. Use an ID to disambiguate duplicate names.
+Use favorites for Liked Songs. Playlist links and URIs also work.
+
+Examples (arguments after ./spotify):
+  --json playlists
+  --json search 'track:The Show Must Go On artist:Queen'
+  create "Road Trip"
+  add "Road Trip" TRACK_ID
+  list "Road Trip"
+  move "Road Trip" TRACK_ID --from favorites
+  move-all "Road Trip" --from "Driving"
+  swap "Road Trip" --from favorites
+
+Agents: search first, inspect artist/album, then add the selected ID to each
+requested destination. Repeating add skips existing tracks. Create makes a
+private playlist. Place --json before the command for machine-readable output.
+Errors exit nonzero. Rerun an interrupted transfer with the same arguments.
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, epilog=GUIDE,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--json", action="store_true", help="Print results as JSON")
+    commands = parser.add_subparsers(dest="command")
+    commands.add_parser("playlists", help="List your Spotify playlists")
+    commands.add_parser("search", help="Search tracks by title or artist").add_argument("query")
+    commands.add_parser("create", help="Create a private playlist").add_argument("name")
+    for command, help_text in dict(list="List tracks", add="Add a track",
+                                   move="Move one track", swap="Exchange tracks",
+                                   **{"move-all": "Move all tracks"}).items():
+        sub = commands.add_parser(command, help=help_text)
+        if command == "swap":
+            sub.add_argument("collection", nargs="?", default="norm", help="Destination playlist")
+        else:
+            sub.add_argument("collection", help="Playlist name, ID, link, or favorites")
+        if command in ("move", "add"):
+            sub.add_argument("track", help="Track ID, URI, or link")
+        if command in ("move", "move-all", "swap"):
+            sub.add_argument("--from", dest="source", help="Source playlist (normally favorites)")
+    args = parser.parse_args()
+    if args.command is None:
+        if not sys.stdin.isatty():
+            parser.print_help()
+            return
+        args = choose_action(parser)
+
+    load_settings(Path(__file__).resolve().with_name(".env"))
+    client = os.getenv("SPOTIPY_CLIENT_ID")
+    if not client:
+        parser.exit(2, "Set SPOTIPY_CLIENT_ID in .env to your Spotify app’s client ID (see .env.example).\n")
+    import requests
+    from spotipy.oauth2 import SpotifyPKCE
+    from spotipy.exceptions import SpotifyException
+
+    os.umask(0o077)
+    folder = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config") / "spotify-mover"
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    auth = SpotifyPKCE(client_id=client, redirect_uri="http://127.0.0.1:8888/callback",
+                       cache_path=str(folder / "token.json"),
+                       scope="user-library-read user-library-modify playlist-read-private "
+                             "playlist-modify-private playlist-modify-public")
+
+    def api(method, path, **kwargs):
+        token = auth.get_access_token()
+        response = requests.request(method, "https://api.spotify.com/v1" + path,
+                                    headers={"Authorization": "Bearer " + token},
+                                    timeout=30, **kwargs)
+        response.raise_for_status()
+        return response.json() if response.content else None
+
+    try:
+        with (folder / "lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            result = run(args, api, folder)
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False))
+        elif isinstance(result, list):
+            for row in result:
+                print("  ".join(str(v) for v in row.values() if v is not None))
+            if not result:
+                print("No results.")
+        else:
+            print("  ".join(f"{k}={v}" for k, v in result.items()))
+    except (ValueError, OSError, requests.RequestException, SpotifyException) as exc:
+        parser.exit(1, f"{exc}\n")
+
+
+if __name__ == "__main__":
+    main()

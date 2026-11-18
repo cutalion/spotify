@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+.env.*
+!.env.example
+.cache
+.cache-*
+token.json
+.aws/
+.codex/
