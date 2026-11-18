@@ -185,3 +185,43 @@ func TestClientIDSetup(t *testing.T) {
 		t.Fatalf("environment override got %q", got)
 	}
 }
+
+func TestPauseAcceptsPlainTextAcknowledgement(t *testing.T) {
+	c := newClient(t.TempDir(), "example")
+	c.token = Token{Access: "test", Scope: scopes, Expires: time.Now().Unix() + 3600}
+	c.http.Transport = transport(func(r *http.Request) *http.Response {
+		if r.Method != "PUT" || r.URL.Path != "/v1/me/player/pause" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		return response(200, "success")
+	})
+	result := c.run(parse([]string{"pause"})).(obj)
+	if result["accepted"] != true {
+		t.Fatal(result)
+	}
+}
+
+func TestResumeSingleIdleDevice(t *testing.T) {
+	c := newClient(t.TempDir(), "example")
+	c.token = Token{Access: "test", Scope: scopes, Expires: time.Now().Unix() + 3600}
+	transferred := false
+	c.http.Transport = transport(func(r *http.Request) *http.Response {
+		switch r.URL.Path {
+		case "/v1/me/player/play":
+			return response(404, `{"error":{"reason":"NO_ACTIVE_DEVICE"}}`)
+		case "/v1/me/player/devices":
+			return response(200, `{"devices":[{"id":"speaker","is_active":false}]}`)
+		case "/v1/me/player":
+			body, _ := io.ReadAll(r.Body)
+			transferred = r.Method == "PUT" && string(body) == `{"device_ids":["speaker"],"play":true}`
+			return response(204, "")
+		default:
+			t.Fatal(r.URL.Path)
+			return nil
+		}
+	})
+	c.run(parse([]string{"play"}))
+	if !transferred {
+		t.Fatal("expected transfer and resume")
+	}
+}

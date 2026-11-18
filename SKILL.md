@@ -7,6 +7,8 @@ description: Use the bundled Spotify CLI to search for recordings, manage playli
 
 Resolve `scripts/spotify` relative to the directory containing this SKILL.md. Invoke that executable by its absolute path from any working directory. In the examples below, `spotify` denotes that executable. On first use, guide the user through `spotify login` in their terminal to configure a client ID and authorize their account. Use `spotify --help` for syntax and place `--json` before the subcommand for structured results.
 
+Run the installed executable directly with the normal user configuration. Spotify commands need network access and may refresh the token in the user’s configuration directory. If the sandbox blocks DNS, sockets, or access to that directory, request the host’s command-scoped approval and retry the same command using the installed executable’s absolute path. Keep the token in its existing location. A network error leaves playback state unknown.
+
 Discover destinations with `spotify --json playlists`. Names match exactly, ignoring case. Quote names containing spaces. If multiple playlists share a name, use the intended playlist ID. Use `favorites` for Liked Songs.
 
 For a request such as “add The Show Must Go On by Queen to Road Trip,” run:

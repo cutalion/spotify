@@ -212,3 +212,25 @@ func (c *client) player(cmd command) obj {
 	c.request(method, "/me/player/"+cmd.name, q, body)
 	return obj{"command": cmd.name, "accepted": true}
 }
+
+func (c *client) idlePlaybackTarget(requested string) string {
+	devices := rows(c.request("GET", "/me/player/devices", nil, nil)["devices"])
+	var available []string
+	for _, device := range devices {
+		id := str(device["id"])
+		if id == "" || device["is_restricted"] == true || (requested != "" && requested != id) {
+			continue
+		}
+		if device["is_active"] == true {
+			return ""
+		}
+		available = append(available, id)
+	}
+	if len(available) == 1 {
+		return available[0]
+	}
+	if len(available) > 1 {
+		fail("Choose a playback device with devices, then play --device ID.")
+	}
+	return ""
+}

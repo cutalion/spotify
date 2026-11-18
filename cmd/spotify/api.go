@@ -62,8 +62,19 @@ func (c *client) request(method, path string, q url.Values, body any) obj {
 	defer res.Body.Close()
 	b, err := io.ReadAll(res.Body)
 	check(err)
+	// An idle Connect device can reject resume until playback is transferred to it.
+	if res.StatusCode == http.StatusNotFound && method == "PUT" && path == "/me/player/play" && body == nil {
+		if device := c.idlePlaybackTarget(q.Get("device_id")); device != "" {
+			c.request("PUT", "/me/player", nil, obj{"device_ids": []string{device}, "play": true})
+			return nil
+		}
+	}
 	if res.StatusCode/100 != 2 {
 		fail("Spotify %s %s: %s %s", method, path, res.Status, strings.TrimSpace(string(b)))
+	}
+	// Player controls acknowledge the command and have no response model.
+	if method != "GET" && (path == "/me/player" || strings.HasPrefix(path, "/me/player/")) {
+		return nil
 	}
 	var result obj
 	if len(b) > 0 {
