@@ -25,6 +25,7 @@ jobs:
           for os in linux darwin; do
             for arch in amd64 arm64; do release/package.sh "$os" "$arch"; done
           done
+          release/plugin.sh
           tar -xzf dist/spotify-linux-amd64.tar.gz -C "$RUNNER_TEMP"
           cd /
           "$RUNNER_TEMP/spotify/scripts/spotify" --help
@@ -56,7 +57,9 @@ jobs:
           TARGET: ${{ matrix.archive }}
         run: |
           tar -xzf "spotify-$TARGET.tar.gz" -C "$RUNNER_TEMP"
+          tar -xzf spotify-plugin.tar.gz -C "$RUNNER_TEMP"
           cd /
+          "$RUNNER_TEMP/spotify-plugin/skills/spotify/scripts/spotify" --help
           PATH=/nonexistent "$RUNNER_TEMP/spotify/scripts/spotify" --help
 
   verify:
@@ -67,6 +70,7 @@ jobs:
       attestations: write
       id-token: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
       - name: Compare independent archives
         run: |
@@ -80,4 +84,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --repo "$GITHUB_REPOSITORY" --generate-notes primary/*
+        run: |
+          release/publish-plugin.sh "$GITHUB_REF_NAME" primary/spotify-plugin.tar.gz
+          gh release create "$GITHUB_REF_NAME" --verify-tag --repo "$GITHUB_REPOSITORY" --generate-notes primary/*

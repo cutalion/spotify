@@ -2,7 +2,26 @@
 
 Install the skill to search Spotify, manage playlists and Liked Songs, inspect recent plays, and control playback from Codex, Claude Code, or another agent that can run local commands.
 
-## Install the skill
+## Install from the plugin marketplace
+
+**Claude Code** — run these commands inside Claude Code:
+
+```text
+/plugin marketplace add cutalion/spotify
+/plugin install spotify@cutalion
+/reload-plugins
+```
+
+**Codex** — run these commands in a terminal, then start a new session:
+
+```sh
+codex plugin marketplace add cutalion/spotify
+codex plugin add spotify@cutalion
+```
+
+Ask the agent to “use the Spotify plugin to show my current track.” On first use, ask it for the installed skill’s absolute `scripts/spotify` path and run that executable with `login` in your terminal. The plugin includes the Linux and macOS binaries for Intel/AMD x86-64 and ARM64. It uses the same Spotify login as the standalone skill.
+
+## Install the skill manually
 
 Choose the release archive for Linux or macOS (`darwin`) and your processor. Use `amd64` for Intel/AMD x86-64 and `arm64` for Apple Silicon or 64-bit ARM. Each archive contains the skill instructions and a standalone executable. [GitHub Releases](https://github.com/cutalion/spotify/releases)
 
@@ -54,6 +73,8 @@ To independently rebuild, check out the same tag, use the exact Go version in `.
 release/package.sh linux amd64
 sha256sum dist/spotify-linux-amd64.tar.gz
 ```
+
+The two marketplace catalogs pin the same distribution tag, such as `spotify-plugin-v1.1.0`. To prepare a marketplace release, update both catalog refs to match the upcoming source version. After building all four platform archives, run `release/plugin.sh` to reproduce `dist/spotify-plugin.tar.gz`. CI checks and attests this archive alongside the standalone archives, then publishes its contents as a separate Git tag that both clients can install. [Claude Code catalog](.claude-plugin/marketplace.json) · [Codex catalog](.agents/plugins/marketplace.json)
 
 For a custom distribution, set `SPOTIFY_RELEASE_CLIENT_ID` when packaging to embed a public client ID. Disclose that build input to anyone reproducing the archive. The standard release prompts each user for their ID.
 

@@ -1,0 +1,14 @@
+{
+  "name": "cutalion",
+  "metadata": { "description": "Spotify skills and playback tools." },
+  "owner": { "name": "cutalion" },
+  "plugins": [{
+    "name": "spotify",
+    "description": "Manage Spotify playlists and control playback.",
+    "source": {
+      "source": "url",
+      "url": "https://github.com/cutalion/spotify.git",
+      "ref": "spotify-plugin-v1.1.0"
+    }
+  }]
+}
