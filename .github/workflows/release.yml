@@ -25,6 +25,7 @@ jobs:
           for os in linux darwin; do
             for arch in amd64 arm64; do release/package.sh "$os" "$arch"; done
           done
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export SPOTIFY_PLUGIN_VERSION="${GITHUB_REF_NAME#v}"; fi
           release/plugin.sh
           tar -xzf dist/spotify-linux-amd64.tar.gz -C "$RUNNER_TEMP"
           cd /

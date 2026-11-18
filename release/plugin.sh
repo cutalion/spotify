@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 out=${1:-dist}
 ref=$(jq -er '.plugins[0].source.ref' .agents/plugins/marketplace.json)
 test "$ref" = "$(jq -er '.plugins[0].source.ref' .claude-plugin/marketplace.json)"
-version=${ref#spotify-plugin-v}
+version=${SPOTIFY_PLUGIN_VERSION:-${ref#spotify-plugin-v}}
 echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT

@@ -74,7 +74,7 @@ release/package.sh linux amd64
 sha256sum dist/spotify-linux-amd64.tar.gz
 ```
 
-The two marketplace catalogs pin the same distribution tag, such as `spotify-plugin-v1.1.0`. To prepare a marketplace release, update both catalog refs to match the upcoming source version. After building all four platform archives, run `release/plugin.sh` to reproduce `dist/spotify-plugin.tar.gz`. CI checks and attests this archive alongside the standalone archives, then publishes its contents as a separate Git tag that both clients can install. [Claude Code catalog](.claude-plugin/marketplace.json) · [Codex catalog](.agents/plugins/marketplace.json)
+The two marketplace catalogs pin the same distribution tag, such as `spotify-plugin-v1.1.0`. Keep both catalogs on the last published distribution while releasing a new source tag. After CI publishes the new distribution tag, verify it with `git ls-remote --exit-code --tags origin refs/tags/spotify-plugin-vX.Y.Z`, then update both catalog refs together. After building all four platform archives, run `SPOTIFY_PLUGIN_VERSION=X.Y.Z release/plugin.sh` to reproduce `dist/spotify-plugin.tar.gz`. CI checks and attests this archive alongside the standalone archives, then publishes its contents as a separate Git tag that both clients can install. [Claude Code catalog](.claude-plugin/marketplace.json) · [Codex catalog](.agents/plugins/marketplace.json)
 
 For a custom distribution, set `SPOTIFY_RELEASE_CLIENT_ID` when packaging to embed a public client ID. Disclose that build input to anyone reproducing the archive. The standard release prompts each user for their ID.
 

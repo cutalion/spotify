@@ -3,13 +3,13 @@
 set -eu
 version=${1:?source tag required}
 archive=${2:?plugin archive required}
-ref=$(jq -er '.plugins[0].source.ref' .agents/plugins/marketplace.json)
-test "$ref" = "spotify-plugin-$version"
-test "$ref" = "$(jq -er '.plugins[0].source.ref' .claude-plugin/marketplace.json)"
+ref="spotify-plugin-$version"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 tar -xzf "$archive" -C "$stage"
 cd "$stage/spotify-plugin"
+test "v$(jq -er .version .codex-plugin/plugin.json)" = "$version"
+test "v$(jq -er .version .claude-plugin/plugin.json)" = "$version"
 git init -q
 git add -- .
 tree=$(git write-tree)
