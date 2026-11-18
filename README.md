@@ -1,23 +1,51 @@
-# Spotify playlist CLI
+# Spotify skill and CLI
 
-Search Spotify for a recording, add it to a playlist, or move and swap tracks between playlists and Liked Songs.
+Install the skill to search Spotify, manage playlists and Liked Songs, inspect recent plays, and control playback from Codex.
 
-## Setup
+## Install the skill
 
-Create a Web API app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and register the redirect URI `http://127.0.0.1:8888/callback`. Spotify requires an active Premium subscription for the owner of a development-mode app.
+Choose the release archive for Linux or macOS (`darwin`) and your processor. Use `amd64` for Intel/AMD x86-64 and `arm64` for Apple Silicon or 64-bit ARM. Each archive contains the skill instructions and a standalone executable. [GitHub Releases](https://github.com/cutalion/spotify/releases)
 
-From the project directory, run these commands on Linux or macOS with Python 3.9 or later.
+For example, after downloading the Linux x86-64 archive:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp -n .env.example .env
+archive=spotify-linux-amd64.tar.gz
+skills="${CODEX_HOME:-$HOME/.codex}/skills"
+mkdir -p "$skills"
+tar -xzf "$archive" -C "$skills"
+"$skills/spotify/scripts/spotify" login
 ```
 
-Set `SPOTIPY_CLIENT_ID` in `.env` to your app’s client ID. Run `./spotify playlists` to sign in through your browser. The CLI uses PKCE and caches tokens under `~/.config/spotify-mover/` (or `$XDG_CONFIG_HOME/spotify-mover/`). Keep this directory and your local `.env` private.
+Start a new Codex session and ask “Use the Spotify skill to show my current track.” You can also call the executable directly from any directory.
 
-If you signed in before the CLI added listening history, the next Spotify command opens a browser to request the added permission. Run `./spotify recent` to see up to 50 recent plays with timestamps.
+## Connect your account
+
+On first login, create a Web API app, register the exact redirect URI `http://127.0.0.1:8888/callback`, and paste the app’s client ID at the terminal prompt. Complete consent in the browser on the same machine. The CLI uses PKCE and stores configuration and tokens under `$XDG_CONFIG_HOME/spotify-mover` (default `~/.config/spotify-mover`). Keep the token private. [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+
+An existing `SPOTIPY_CLIENT_ID` environment variable overrides the saved ID. The source checkout also reads its local `.env`. Existing Spotipy token caches and transfer journals in the configuration directory are supported. Missing scopes trigger browser consent.
+
+For a small shared app, the owner can give users the same public client ID and add their accounts to the app allowlist. A development-mode app requires Premium for its owner and normally supports up to five authorized users. [Spotify quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)
+
+## Verify or build a release
+
+Verify the downloaded archive before extraction and check that the attestation identifies the expected release tag and workflow:
+
+```sh
+gh attestation verify "$archive" --repo cutalion/spotify
+```
+
+To independently rebuild, check out the same tag, use the exact Go version in `.github/workflows/release.yml`, and run the following on Linux with GNU tar and gzip. Compare the archive digest with the release’s SHA256SUMS. Pushing a version tag such as `v1.0.0` starts the release workflow. It compares archives from two fresh runners and smoke-tests each executable on its target platform before attesting and publishing the archives. A manual workflow run exercises the same checks and produces downloadable workflow artifacts.
+
+```sh
+release/package.sh linux amd64
+sha256sum dist/spotify-linux-amd64.tar.gz
+```
+
+For a custom distribution, set `SPOTIFY_RELEASE_CLIENT_ID` when packaging to embed a public client ID. Disclose that build input to anyone reproducing the archive. The standard release prompts each user for their ID.
+
+## Run from source
+
+With Go 1.25 or later, run `./spotify --help` or `go test ./...` from the checkout. The examples below use the checkout launcher. For a release installation, substitute the installed executable.
 
 ## Usage
 
