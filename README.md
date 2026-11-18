@@ -1,22 +1,36 @@
 # Spotify skill and CLI
 
-Install the skill to search Spotify, manage playlists and Liked Songs, inspect recent plays, and control playback from Codex.
+Install the skill to search Spotify, manage playlists and Liked Songs, inspect recent plays, and control playback from Codex, Claude Code, or another agent that can run local commands.
 
 ## Install the skill
 
 Choose the release archive for Linux or macOS (`darwin`) and your processor. Use `amd64` for Intel/AMD x86-64 and `arm64` for Apple Silicon or 64-bit ARM. Each archive contains the skill instructions and a standalone executable. [GitHub Releases](https://github.com/cutalion/spotify/releases)
 
-For example, after downloading the Linux x86-64 archive:
+### Choose the install directory
+
+Set `skills` in your terminal for the agent you use, then run the extraction and login commands below.
+
+| Agent | Install directory | Example request after login |
+|---|---|---|
+| Codex | `skills="${CODEX_HOME:-$HOME/.codex}/skills"` | In a new session, ask “Use the Spotify skill to show my current track.” |
+| Claude Code | `skills="$HOME/.claude/skills"` | Run `/spotify show my current track` in Claude Code. |
+| Other agents with skill discovery | Set `skills` to the agent’s documented skills directory. | Ask the agent to use the Spotify skill to show your current track. |
+| Agents with local shell access only | `skills="$HOME/.local/share/agent-skills"` | Give the agent the full path to the installed `spotify/SKILL.md` and ask it to follow those instructions to show your current track. |
+
+To install for a single Claude Code project, run `skills="$PWD/.claude/skills"` from the project root. [Claude Code skill locations](https://code.claude.com/docs/en/skills#where-skills-live)
+
+### Extract and sign in
+
+From the download directory, run the following in the same terminal. Substitute the archive filename for your platform.
 
 ```sh
 archive=spotify-linux-amd64.tar.gz
-skills="${CODEX_HOME:-$HOME/.codex}/skills"
 mkdir -p "$skills"
 tar -xzf "$archive" -C "$skills"
 "$skills/spotify/scripts/spotify" login
 ```
 
-Start a new Codex session and ask “Use the Spotify skill to show my current track.” You can also call the executable directly from any directory.
+You can check the installation with `"$skills/spotify/scripts/spotify" --json status` before trying it in your agent.
 
 ## Connect your account
 
