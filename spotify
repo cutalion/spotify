@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage Spotify playlists and Liked Songs."""
+"""Manage Spotify playlists and Liked Songs, view recent plays, and control playback."""
 import argparse
 import json
 import fcntl
@@ -112,9 +112,68 @@ def track_summary(t):
                 album=(t.get("album") or {}).get("name"))
 
 
+PLAYER_ACTIONS = {
+    "play": "Resume playback or start a track or playlist",
+    "pause": "Pause playback",
+    "next": "Skip to the next track",
+    "previous": "Go to the previous track",
+    "volume": "Set volume from 0 to 100",
+    "seek": "Jump to a position in seconds",
+    "shuffle": "Turn shuffle on or off",
+    "repeat": "Repeat a track, repeat the context, or turn repeat off",
+}
+
+
+def control_player(args, api):
+    command = args.command
+    params = {"device_id": args.device} if args.device else {}
+    body = {}
+    if command == "play":
+        if args.track:
+            body["uris"] = ["spotify:track:" + spotify_id(args.track, "track")]
+        elif args.playlist:
+            playlist = resolve(api, args.playlist)
+            if playlist == "favorites":
+                raise ValueError("Choose a Spotify playlist to play.")
+            body["context_uri"] = "spotify:playlist:" + playlist
+    elif command == "volume":
+        if not 0 <= args.percent <= 100:
+            raise ValueError("Volume must be between 0 and 100.")
+        params["volume_percent"] = args.percent
+    elif command == "seek":
+        if args.seconds < 0:
+            raise ValueError("Seek position must be zero or greater.")
+        params["position_ms"] = args.seconds * 1000
+    elif command == "shuffle":
+        params["state"] = "true" if args.mode == "on" else "false"
+    elif command == "repeat":
+        params["state"] = args.mode
+    method = "POST" if command in ("next", "previous") else "PUT"
+    api(method, "/me/player/" + command, params=params, **({"json": body} if body else {}))
+    return {"command": command, "accepted": True}
+
+
 def run(args, api, folder):
+    if args.command in PLAYER_ACTIONS:
+        return control_player(args, api)
+    if args.command == "devices":
+        devices = api("GET", "/me/player/devices")["devices"]
+        return [dict(id=d["id"], name=d["name"], active=d["is_active"]) for d in devices]
+    if args.command == "status":
+        state = api("GET", "/me/player")
+        if not state:
+            return {"status": "idle"}
+        item = state.get("item") or {}
+        device = state.get("device") or {}
+        return dict(status="playing" if state["is_playing"] else "paused",
+                    title=item.get("name"), device=device.get("name"),
+                    progress_ms=state.get("progress_ms"), volume=device.get("volume_percent"))
     if args.command == "playlists":
         return [dict(id=p["id"], name=p["name"]) for p in pages(api, "/me/playlists") if p]
+    if args.command == "recent":
+        page = api("GET", "/me/player/recently-played", params={"limit": 50})
+        return [dict(played_at=row["played_at"], **track_summary(row["track"]))
+                for row in page["items"] if row.get("track")]
     if args.command == "search":
         hits = api("GET", "/search", params={"type": "track", "q": args.query, "limit": 10})
         return [track_summary(t) for t in hits["tracks"]["items"] if t and t.get("id")]
@@ -168,6 +227,11 @@ Names match exactly, ignoring case. Use an ID to disambiguate duplicate names.
 Use favorites for Liked Songs. Playlist links and URIs also work.
 
 Examples (arguments after ./spotify):
+  --json recent
+  status
+  play --playlist "Road Trip"
+  devices
+  pause --device DEVICE_ID
   --json playlists
   --json search 'track:The Show Must Go On artist:Queen'
   create "Road Trip"
@@ -189,6 +253,24 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--json", action="store_true", help="Print results as JSON")
     commands = parser.add_subparsers(dest="command")
+    commands.add_parser("status", help="Show current playback")
+    commands.add_parser("devices", help="List Spotify Connect devices and IDs")
+    for command, description in PLAYER_ACTIONS.items():
+        sub = commands.add_parser(command, help=description, description=description)
+        sub.add_argument("--device", metavar="ID", help="Target device (defaults to the active device)")
+        if command == "play":
+            source = sub.add_mutually_exclusive_group()
+            source.add_argument("--track", help="Track ID, link, or URI")
+            source.add_argument("--playlist", help="Playlist name, ID, link, or URI")
+        elif command == "volume":
+            sub.add_argument("percent", type=int)
+        elif command == "seek":
+            sub.add_argument("seconds", type=int)
+        elif command == "shuffle":
+            sub.add_argument("mode", choices=("on", "off"))
+        elif command == "repeat":
+            sub.add_argument("mode", choices=("off", "track", "context"))
+    commands.add_parser("recent", help="List up to 50 recently played tracks")
     commands.add_parser("playlists", help="List your Spotify playlists")
     commands.add_parser("search", help="Search tracks by title or artist").add_argument("query")
     commands.add_parser("create", help="Create a private playlist").add_argument("name")
@@ -230,7 +312,8 @@ def main():
     auth = SpotifyPKCE(client_id=client, redirect_uri="http://127.0.0.1:8888/callback",
                        cache_path=str(folder / "token.json"),
                        scope="user-library-read user-library-modify playlist-read-private "
-                             "playlist-modify-private playlist-modify-public")
+                             "playlist-modify-private playlist-modify-public user-read-recently-played "
+                             "user-read-playback-state user-modify-playback-state")
 
     def api(method, path, **kwargs):
         token = auth.get_access_token()
