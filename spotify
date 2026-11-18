@@ -173,8 +173,8 @@ Examples (arguments after ./spotify):
   create "Road Trip"
   add "Road Trip" TRACK_ID
   list "Road Trip"
-  move "Road Trip" TRACK_ID --from favorites
-  move-all "Road Trip" --from "Driving"
+  move TRACK_ID --from favorites --to "Road Trip"
+  move-all --from "Driving" --to "Road Trip"
   swap "Road Trip" --from favorites
 
 Agents: search first, inspect artist/album, then add the selected ID to each
@@ -196,13 +196,18 @@ def main():
                                    move="Move one track", swap="Exchange tracks",
                                    **{"move-all": "Move all tracks"}).items():
         sub = commands.add_parser(command, help=help_text)
-        if command == "swap":
+        if command in ("move", "move-all"):
+            sub.add_argument("--from", dest="source", required=True, metavar="SOURCE",
+                             help="Playlist to remove tracks from")
+            sub.add_argument("--to", dest="collection", required=True, metavar="DESTINATION",
+                             help="Playlist to add tracks to")
+        elif command == "swap":
             sub.add_argument("collection", nargs="?", default="norm", help="Destination playlist")
         else:
             sub.add_argument("collection", help="Playlist name, ID, link, or favorites")
         if command in ("move", "add"):
             sub.add_argument("track", help="Track ID, URI, or link")
-        if command in ("move", "move-all", "swap"):
+        if command == "swap":
             sub.add_argument("--from", dest="source", help="Source playlist (normally favorites)")
     args = parser.parse_args()
     if args.command is None:

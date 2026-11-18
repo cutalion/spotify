@@ -25,12 +25,14 @@ Set `SPOTIPY_CLIENT_ID` in `.env` to your app’s client ID. Run `./spotify play
 ./spotify create "Road Trip"
 ./spotify add "Road Trip" TRACK_ID
 ./spotify list "Road Trip"
-./spotify move "Road Trip" TRACK_ID --from favorites
-./spotify move-all "Road Trip" --from "Driving"
+./spotify move TRACK_ID --from favorites --to "Road Trip"
+./spotify move-all --from "Driving" --to "Road Trip"
 ./spotify swap "Road Trip" --from favorites
 ```
 
 Replace `TRACK_ID` with an ID from search results. Use a playlist name, ID, or link to select a playlist. Names match exactly, ignoring case. Use an ID for duplicate names and `favorites` for Liked Songs. New playlists are private.
+
+The single-track move above adds the track to Road Trip and removes it from Liked Songs. Both move commands require an explicit source and destination.
 
 A swap exchanges tracks unique to each collection and keeps shared tracks in both. If a transfer is interrupted, rerun the same command to resume.
 
