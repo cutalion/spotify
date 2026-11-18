@@ -8,7 +8,7 @@
     "source": {
       "source": "url",
       "url": "https://github.com/cutalion/spotify.git",
-      "ref": "spotify-plugin-v1.1.0"
+      "ref": "spotify-plugin-v1.1.1"
     }
   }]
 }
