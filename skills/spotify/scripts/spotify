@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+case "$(uname -s)" in Linux) os=linux ;; Darwin) os=darwin ;; *) echo "Spotify supports Linux and macOS" >&2; exit 1 ;; esac
+case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) echo "Spotify requires x86-64 or ARM64" >&2; exit 1 ;; esac
+exec "$(dirname "$0")/bin/spotify-$os-$arch" "$@"
