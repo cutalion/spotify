@@ -1,0 +1,6 @@
+{
+  "name": "spotify",
+  "version": "2.0.0",
+  "description": "Manage Spotify playlists and control playback.",
+  "skills": "./skills/"
+}
