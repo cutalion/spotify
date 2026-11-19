@@ -225,3 +225,21 @@ func TestResumeSingleIdleDevice(t *testing.T) {
 		t.Fatal("expected transfer and resume")
 	}
 }
+
+func TestRemovePlaylist(t *testing.T) {
+	const id = "3cEYpjA9oz9GiPac4AsH4n"
+	c := newClient(t.TempDir(), "example")
+	c.token = Token{Access: "test", Scope: scopes, Expires: time.Now().Unix() + 3600}
+	removed := false
+	c.http.Transport = transport(func(r *http.Request) *http.Response {
+		if r.Method != "DELETE" || r.URL.Path != "/v1/me/library" || r.URL.Query().Get("uris") != "spotify:playlist:"+id {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL)
+		}
+		removed = true
+		return response(200, "")
+	})
+	result := c.run(parse([]string{"remove", id})).(obj)
+	if !removed || result["id"] != id || result["status"] != "removed" {
+		t.Fatal(result)
+	}
+}

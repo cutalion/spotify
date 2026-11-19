@@ -2,4 +2,4 @@
 # Source-checkout entry point. Release archives contain the compiled CLI.
 set -eu
 cd "$(dirname "$0")"
-exec ./scripts/spotify "$@"
+exec ./scripts/spotifyctl "$@"

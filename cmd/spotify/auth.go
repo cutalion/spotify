@@ -74,7 +74,7 @@ func clientID(folder string, login bool) string {
 		return defaultClientID
 	}
 	if !login {
-		fail("run spotify login to configure your Spotify client ID")
+		fail("run spotifyctl login to configure your Spotify client ID")
 	}
 	fmt.Fprintln(os.Stderr, "Create a Web API app at https://developer.spotify.com/dashboard and register "+redirect)
 	fmt.Fprint(os.Stderr, "Client ID: ")

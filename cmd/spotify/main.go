@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -11,56 +10,14 @@ import (
 	"slices"
 	"strings"
 	"syscall"
-	"unicode"
 )
 
 func help() {
-	fmt.Println("Manage Spotify playlists, Liked Songs, history and playback.\nUsage: spotify [--json] COMMAND\nCommands:")
+	fmt.Println("Manage Spotify playlists, Liked Songs, history and playback.\nUsage: spotifyctl [--json] COMMAND\nCommands:")
 	for _, k := range slices.Sorted(maps.Keys(specs)) {
 		fmt.Println(" ", specs[k].usage)
 	}
 	fmt.Println("Use favorites for Liked Songs. Playlist names match exactly, ignoring case. Use an ID for duplicate names. Recent history includes up to 50 plays.")
-}
-func splitLine(s string) []string {
-	var words []string
-	var word strings.Builder
-	var quote rune
-	started, escaped := false, false
-	for _, r := range s {
-		switch {
-		case escaped:
-			word.WriteRune(r)
-			escaped = false
-		case r == '\\' && quote != '\'':
-			escaped = true
-			started = true
-		case quote != 0:
-			if quote == r {
-				quote = 0
-			} else {
-				word.WriteRune(r)
-			}
-		case r == '\'' || r == '"':
-			quote = r
-			started = true
-		case unicode.IsSpace(r):
-			if started {
-				words = append(words, word.String())
-				word.Reset()
-				started = false
-			}
-		default:
-			started = true
-			word.WriteRune(r)
-		}
-	}
-	if quote != 0 || escaped {
-		fail("unfinished quote or escape")
-	}
-	if started {
-		words = append(words, word.String())
-	}
-	return words
 }
 func loadEnv(path string) {
 	b, e := os.ReadFile(path)
@@ -124,28 +81,7 @@ func execute() {
 	if machine {
 		a = a[1:]
 	}
-	if len(a) == 0 {
-		help()
-		stat, e := os.Stdin.Stat()
-		check(e)
-		if stat.Mode()&os.ModeCharDevice == 0 {
-			return
-		}
-		fmt.Fprint(os.Stderr, "Spotify command (or q to quit)> ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		a = splitLine(line)
-		if len(a) == 0 || a[0] == "q" {
-			return
-		}
-		if a[0] == "--json" {
-			machine = true
-			a = a[1:]
-		}
-		if len(a) == 0 {
-			return
-		}
-	}
-	if a[0] == "--help" || a[0] == "-h" {
+	if len(a) == 0 || a[0] == "--help" || a[0] == "-h" {
 		help()
 		return
 	}
@@ -154,7 +90,7 @@ func execute() {
 		if !ok {
 			fail("unknown command %q", a[0])
 		}
-		fmt.Println("Usage: spotify", s.usage)
+		fmt.Println("Usage: spotifyctl", s.usage)
 		return
 	}
 	cmd := parse(a)
@@ -165,21 +101,30 @@ func execute() {
 	} else {
 		loadEnv(filepath.Join(filepath.Dir(exe), ".env"))
 	}
+	folder := configDir()
+	check(os.MkdirAll(folder, 0700))
+	lock, e := os.OpenFile(filepath.Join(folder, "lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if e != nil {
+		fail("open Spotify configuration lock in %s: %v (set SPOTIFYCTL_CONFIG_DIR to a writable private directory)", folder, e)
+	}
+	defer lock.Close()
+	check(syscall.Flock(int(lock.Fd()), syscall.LOCK_EX))
+	c := newClient(folder, clientID(folder, cmd.name == "login"))
+	output(c.run(cmd), machine)
+}
+func configDir() string {
+	if folder := os.Getenv("SPOTIFYCTL_CONFIG_DIR"); folder != "" {
+		return folder
+	}
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, e := os.UserHomeDir()
 		check(e)
 		base = filepath.Join(home, ".config")
 	}
-	folder := filepath.Join(base, "spotify-mover")
-	check(os.MkdirAll(folder, 0700))
-	lock, e := os.OpenFile(filepath.Join(folder, "lock"), os.O_CREATE|os.O_RDWR, 0600)
-	check(e)
-	defer lock.Close()
-	check(syscall.Flock(int(lock.Fd()), syscall.LOCK_EX))
-	c := newClient(folder, clientID(folder, cmd.name == "login"))
-	output(c.run(cmd), machine)
+	return filepath.Join(base, "spotifyctl")
 }
+
 func main() {
 	defer func() {
 		if problem := recover(); problem != nil {

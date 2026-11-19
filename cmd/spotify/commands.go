@@ -25,6 +25,7 @@ var specs = map[string]spec{
 	"status":    {"status", 0, 0, ""},
 	"devices":   {"devices", 0, 0, ""},
 	"search":    {"search QUERY", 1, 1, ""},
+	"remove":    {"remove PLAYLIST", 1, 1, ""},
 	"create":    {"create NAME", 1, 1, ""},
 	"list":      {"list COLLECTION", 1, 1, ""},
 	"add":       {"add COLLECTION TRACK", 2, 2, ""},
@@ -125,6 +126,13 @@ func (c *client) run(cmd command) any {
 	case "create":
 		p := c.request("POST", "/me/playlists", nil, obj{"name": a[0], "public": false})
 		return obj{"name": p["name"], "id": p["id"]}
+	case "remove":
+		id := c.resolve(a[0])
+		if id == "favorites" {
+			fail("Liked Songs cannot be removed as a playlist")
+		}
+		c.request("DELETE", "/me/library", url.Values{"uris": {"spotify:playlist:" + id}}, nil)
+		return obj{"id": id, "status": "removed"}
 	case "list":
 		for _, t := range c.tracks(c.resolve(a[0])) {
 			out = append(out, summary(t))
