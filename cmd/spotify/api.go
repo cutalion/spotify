@@ -44,6 +44,10 @@ func check(err error) {
 }
 func fail(f string, a ...any) { panic(fmt.Errorf(f, a...)) }
 func (c *client) request(method, path string, q url.Values, body any) obj {
+	return c.requestOnce(method, path, q, body, true)
+}
+
+func (c *client) requestOnce(method, path string, q url.Values, body any, recoverDevice bool) obj {
 	var data []byte
 	if body != nil {
 		var err error
@@ -63,10 +67,17 @@ func (c *client) request(method, path string, q url.Values, body any) obj {
 	b, err := io.ReadAll(res.Body)
 	check(err)
 	// An idle Connect device can reject resume until playback is transferred to it.
-	if res.StatusCode == http.StatusNotFound && method == "PUT" && path == "/me/player/play" && body == nil {
-		if device := c.idlePlaybackTarget(q.Get("device_id")); device != "" {
-			c.request("PUT", "/me/player", nil, obj{"device_ids": []string{device}, "play": true})
-			return nil
+	if res.StatusCode == http.StatusNotFound && method == "PUT" && path == "/me/player/play" && recoverDevice {
+		var failure struct{ Error struct{ Reason string } }
+		if json.Unmarshal(b, &failure) == nil && failure.Error.Reason == "NO_ACTIVE_DEVICE" {
+			if device := c.idlePlaybackTarget(q.Get("device_id")); device != "" {
+				c.request("PUT", "/me/player", nil, obj{"device_ids": []string{device}, "play": body == nil})
+				if body != nil {
+					q.Set("device_id", device)
+					return c.requestOnce(method, path, q, body, false)
+				}
+				return nil
+			}
 		}
 	}
 	if res.StatusCode/100 != 2 {
@@ -207,6 +218,53 @@ func uris(ts []obj) ([]string, map[string]bool) {
 	}
 	return out, seen
 }
+func trackCounts(tracks []obj) map[string]int {
+	counts := map[string]int{}
+	for _, t := range tracks {
+		counts[str(t["uri"])]++
+	}
+	return counts
+}
+func selectedCopies(list []string, tracks []obj) []string {
+	selected := uriSet(list)
+	var out []string
+	for _, track := range tracks {
+		u := str(track["uri"])
+		if selected[u] {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+func missingCopies(wanted []string, existing map[string]int) []string {
+	var out []string
+	seen := map[string]int{}
+	for _, u := range wanted {
+		seen[u]++
+		if seen[u] > existing[u] {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+func checkRecordedCopies(list []string, current map[string]int) {
+	recorded := map[string]int{}
+	for _, u := range list {
+		recorded[u]++
+	}
+	for u, count := range recorded {
+		if current[u] > count {
+			fail("transfer paused: more copies of %s than recorded in the journal", u)
+		}
+	}
+}
+func uriSet(list []string) map[string]bool {
+	set := map[string]bool{}
+	for _, u := range list {
+		set[u] = true
+	}
+	return set
+}
 func subset(list []string, set map[string]bool, present bool) []string {
 	out := []string{}
 	for _, v := range list {
@@ -220,8 +278,10 @@ func (c *client) transfer(cmd, source, dest, track string) obj {
 	if source == dest {
 		fail("choose two different collections")
 	}
-	left, before := uris(c.tracks(source))
-	right, after := uris(c.tracks(dest))
+	sourceTracks, destTracks := c.tracks(source), c.tracks(dest)
+	left, before := uris(sourceTracks)
+	right, after := uris(destTracks)
+	sourceCounts, destCounts := trackCounts(sourceTracks), trackCounts(destTracks)
 	pair := []string{source, dest}
 	sort.Strings(pair)
 	path := filepath.Join(c.folder, "transfer-"+strings.Join(pair, "-")+".json")
@@ -241,17 +301,35 @@ func (c *client) transfer(cmd, source, dest, track string) obj {
 			j.Reverse = subset(right, before, false)
 		case "move":
 			u := "spotify:track:" + op[3]
-			if !before[u] && !after[u] {
-				fail("track absent from both collections")
+			if !before[u] {
+				fail("track absent from source collection")
 			}
 			j.Forward = []string{u}
 		}
+		j.Forward = selectedCopies(j.Forward, sourceTracks)
+		j.Reverse = selectedCopies(j.Reverse, destTracks)
+		if dest == "favorites" {
+			for _, u := range j.Forward {
+				if sourceCounts[u] > 1 {
+					fail("Liked Songs cannot preserve duplicate copies of %s", u)
+				}
+			}
+		}
+		if source == "favorites" {
+			for _, u := range j.Reverse {
+				if destCounts[u] > 1 {
+					fail("Liked Songs cannot preserve duplicate copies of %s", u)
+				}
+			}
+		}
 		writeJSON(path, j)
 	}
-	c.update(dest, true, subset(j.Forward, after, false))
-	c.update(source, true, subset(j.Reverse, before, false))
-	c.update(source, false, subset(j.Forward, before, true))
-	c.update(dest, false, subset(j.Reverse, after, true))
+	checkRecordedCopies(j.Forward, sourceCounts)
+	checkRecordedCopies(j.Reverse, destCounts)
+	c.update(dest, true, missingCopies(j.Forward, destCounts))
+	c.update(source, true, missingCopies(j.Reverse, sourceCounts))
+	c.update(source, false, subset(left, uriSet(j.Forward), true))
+	c.update(dest, false, subset(right, uriSet(j.Reverse), true))
 	check(os.Remove(path))
 	return obj{"source": source, "destination": dest, "forward": len(j.Forward), "reverse": len(j.Reverse)}
 }
