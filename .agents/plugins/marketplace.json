@@ -6,7 +6,7 @@
     "source": {
       "source": "url",
       "url": "https://github.com/cutalion/spotify.git",
-      "ref": "spotify-plugin-v2.0.0"
+      "ref": "spotify-plugin-v2.0.1"
     },
     "policy": { "installation": "AVAILABLE", "authentication": "ON_USE" },
     "category": "Music"
