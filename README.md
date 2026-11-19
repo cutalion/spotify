@@ -135,6 +135,8 @@ Spotify Premium is required for playback control. On the next sign-in, approve a
 ./spotifyctl status
 ./spotifyctl play --playlist "Ночная передача"
 ./spotifyctl play --track TRACK_ID
+./spotifyctl queue
+./spotifyctl queue TRACK_ID
 ./spotifyctl pause
 ./spotifyctl play
 ./spotifyctl next
@@ -146,3 +148,5 @@ Spotify Premium is required for playback control. On the next sign-in, approve a
 ```
 
 Use `play` alone to resume. Seek positions are in seconds. Repeat accepts `off`, `track`, or `context` (the current playlist or album).
+
+Use `queue` alone to list upcoming items. Pass a track ID, track URI or link, or an episode URI or link to append an item to the queue. Prepending, reordering, removing, and clearing queue entries require the Spotify app. [Spotify playback API](https://developer.spotify.com/documentation/web-api/reference)

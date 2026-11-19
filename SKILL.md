@@ -27,6 +27,8 @@ Use `spotifyctl --json status` for current playback and `spotifyctl --json recen
 
 Use `spotifyctl play` to resume, `spotifyctl play --playlist "Road Trip"` to start a playlist, or `spotifyctl play --track TRACK_ID` to start a recording. Use `pause`, `next`, or `previous` for transport controls.
 
+Use `spotifyctl queue` to list upcoming items and `spotifyctl queue TRACK_ID` to append a track. Episode URIs and links are also accepted. To queue multiple recordings, run the command once per track in the requested order. Use the Spotify app to prepend, reorder, remove, or clear queue entries.
+
 Playback controls target the active device by default. For a named device, match its name in `spotifyctl --json devices` and pass its ID with `--device ID`. Playback control requires Spotify Premium.
 
 Use `volume 35` for 35 percent, `seek 90` for 90 seconds from the start, and `shuffle on` or `shuffle off`. Repeat accepts `track`, `context` (the current playlist or album), or `off`.

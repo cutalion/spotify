@@ -33,6 +33,7 @@ var specs = map[string]spec{
 	"move-all":  {"move-all --from SOURCE --to DESTINATION", 0, 0, "from to"},
 	"swap":      {"swap [COLLECTION] [--from SOURCE]", 0, 1, "from"},
 	"play":      {"play [--track TRACK | --playlist PLAYLIST] [--device ID]", 0, 0, "device track playlist"},
+	"queue":     {"queue [TRACK_OR_EPISODE [--device ID]]", 0, 1, "device"},
 	"pause":     {"pause [--device ID]", 0, 0, "device"},
 	"previous":  {"previous [--device ID]", 0, 0, "device"},
 	"next":      {"next [--device ID]", 0, 0, "device"},
@@ -78,12 +79,24 @@ func parse(a []string) command {
 	if len(cmd.args) < s.min || len(cmd.args) > s.max || (cmd.name == "move" || cmd.name == "move-all") && (cmd.opts["from"] == "" || cmd.opts["to"] == "") || cmd.opts["playlist"] != "" && cmd.opts["track"] != "" {
 		fail("usage: %s", s.usage)
 	}
+	if cmd.name == "queue" && len(cmd.args) == 0 && cmd.opts["device"] != "" {
+		fail("--device requires a track or episode when using queue")
+	}
 	return cmd
 }
 func (c *client) run(cmd command) any {
 	a, o, n := cmd.args, cmd.opts, cmd.name
 	out := []obj{}
 	switch n {
+	case "queue":
+		if len(a) != 0 {
+			return c.player(cmd)
+		}
+		for _, item := range rows(c.request("GET", "/me/player/queue", nil, nil)["queue"]) {
+			entry := summary(item)
+			entry["uri"] = item["uri"]
+			out = append(out, entry)
+		}
 	case "login":
 		c.access()
 		return obj{"status": "authorized"}
@@ -193,6 +206,16 @@ func (c *client) player(cmd command) obj {
 			} else {
 				body = obj{"context_uri": "spotify:playlist:" + dest}
 			}
+		}
+	case "queue":
+		method = "POST"
+		item := cmd.args[0]
+		if track := id(item, "track"); track != "" {
+			q.Set("uri", "spotify:track:"+track)
+		} else if episode := id(item, "episode"); episode != "" {
+			q.Set("uri", "spotify:episode:"+episode)
+		} else {
+			fail("expected a Spotify track ID, track URI or link, or episode URI or link")
 		}
 	case "next", "previous":
 		method = "POST"

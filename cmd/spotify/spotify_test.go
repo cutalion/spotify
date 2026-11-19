@@ -22,6 +22,39 @@ func response(code int, body string) *http.Response {
 	return &http.Response{StatusCode: code, Status: http.StatusText(code), Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}
 }
 
+func TestQueueTrack(t *testing.T) {
+	c := newClient(t.TempDir(), "example")
+	c.token = Token{Access: "test", Scope: scopes, Expires: time.Now().Unix() + 3600}
+	const track = "abcdefghijklmnopqrstuv"
+	c.http.Transport = transport(func(r *http.Request) *http.Response {
+		query := r.URL.Query()
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/me/player/queue" ||
+			query.Get("uri") != "spotify:track:"+track || query.Get("device_id") != "speaker" {
+			t.Fatalf("unexpected queue request: %s %s", r.Method, r.URL)
+		}
+		return response(http.StatusNoContent, "")
+	})
+	got := c.run(parse([]string{"queue", "https://open.spotify.com/track/" + track, "--device", "speaker"})).(obj)
+	if got["command"] != "queue" || got["accepted"] != true {
+		t.Fatal(got)
+	}
+}
+
+func TestListQueue(t *testing.T) {
+	c := newClient(t.TempDir(), "example")
+	c.token = Token{Access: "test", Scope: scopes, Expires: time.Now().Unix() + 3600}
+	c.http.Transport = transport(func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/me/player/queue" {
+			t.Fatalf("unexpected queue request: %s %s", r.Method, r.URL)
+		}
+		return response(http.StatusOK, `{"currently_playing":{"name":"Current"},"queue":[{"name":"Next","uri":"spotify:track:next"},{"name":"Later","uri":"spotify:episode:later"}]}`)
+	})
+	got := c.run(parse([]string{"queue"})).([]obj)
+	if len(got) != 2 || got[0]["name"] != "Next" || got[1]["uri"] != "spotify:episode:later" {
+		t.Fatal(got)
+	}
+}
+
 func TestLegacyRefreshAndStatus(t *testing.T) {
 	c := newClient(t.TempDir(), "example")
 	path := filepath.Join(c.folder, "token.json")
