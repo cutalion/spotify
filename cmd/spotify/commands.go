@@ -182,9 +182,17 @@ func (c *client) player(cmd command) obj {
 		} else if v := cmd.opts["playlist"]; v != "" {
 			dest := c.resolve(v)
 			if dest == "favorites" {
-				fail("choose a playlist to play")
+				uris := []string{}
+				for _, track := range c.tracks(dest) {
+					uris = append(uris, str(track["uri"]))
+				}
+				if len(uris) == 0 {
+					fail("Liked Songs contains no playable tracks")
+				}
+				body = obj{"uris": uris}
+			} else {
+				body = obj{"context_uri": "spotify:playlist:" + dest}
 			}
-			body = obj{"context_uri": "spotify:playlist:" + dest}
 		}
 	case "next", "previous":
 		method = "POST"

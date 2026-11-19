@@ -9,7 +9,7 @@ Use the bundled `scripts/spotifyctl` relative to this SKILL.md when present. For
 
 Run the installed executable directly with the normal user configuration. Spotify commands need network access and may refresh the token in the user’s configuration directory. If the sandbox blocks DNS, sockets, or access to that directory, request the host’s command-scoped approval and retry the same command using the installed executable’s absolute path. Honor a user-configured `SPOTIFYCTL_CONFIG_DIR` when present. A network error leaves playback state unknown.
 
-Discover destinations with `spotifyctl --json playlists`. Names match exactly, ignoring case. Quote names containing spaces. If multiple playlists share a name, use the intended playlist ID. Use `favorites` for Liked Songs.
+Discover destinations with `spotifyctl --json playlists`. Names match exactly, ignoring case. Quote names containing spaces. If multiple playlists share a name, use the intended playlist ID. Spotify’s **Liked Songs** collection contains the tracks the user has saved. Treat “my favorites”, “fav songs”, and “my fav playlist” as Liked Songs unless the user identifies a specific named playlist. Use `favorites` as the collection argument. To start playback, run `spotifyctl play --playlist favorites` directly.
 
 For a request such as “add The Show Must Go On by Queen to Road Trip,” run:
 
