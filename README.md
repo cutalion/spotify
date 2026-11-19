@@ -35,6 +35,44 @@ tar -xzf spotify-linux-amd64.tar.gz
 
 The installer puts the executable in `~/.local/bin` and registers the Spotify skill for Codex and Claude Code under their user skills directories. For another agent, copy the extracted `spotify` directory into that agent’s skills directory. The bundled `scripts/spotifyctl` can also run directly.
 
+## Upgrade
+
+**Codex marketplace.** Refresh the catalog, reinstall the plugin from the updated catalog, then start a new Codex session.
+
+```sh
+codex plugin marketplace upgrade cutalion
+codex plugin remove spotify@cutalion
+codex plugin add spotify@cutalion
+```
+
+**Claude Code marketplace.** Run these commands in a terminal, then restart Claude Code.
+
+```sh
+claude plugin marketplace update cutalion
+claude plugin update spotify@cutalion
+```
+
+**Manual install.** Extract the latest archive for your platform into a fresh directory and run its `./spotify/install.sh` again. If you copied the skill into another agent, replace that agent’s `spotify` skill directory with the newly extracted copy. Restart the agent to load the updated skill. When upgrading from v1 to v2, run `spotifyctl login` once with your existing client ID. Version 2 uses a new configuration directory. [GitHub Releases](https://github.com/cutalion/spotify/releases)
+
+## Uninstall
+
+For a marketplace installation, run the command for your agent in a terminal, then restart the agent.
+
+| Agent | Command |
+| --- | --- |
+| Codex | `codex plugin remove spotify@cutalion` |
+| Claude Code | `claude plugin uninstall spotify@cutalion` |
+
+For a manual installation with `install.sh`, remove the executable and the two skill files it installed.
+
+```sh
+rm -f "$HOME/.local/bin/spotifyctl" \
+  "${CODEX_HOME:-$HOME/.codex}/skills/spotify/SKILL.md" \
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spotify/SKILL.md"
+```
+
+If you copied the entire skill into another agent, remove that copy from the agent’s skills directory. All installations share the same Spotify login by default. To also erase local credentials and transfer journals after removing your last installation, delete the `spotifyctl` configuration directory described below.
+
 ## Connect your account
 
 On first login, create a Web API app, register the exact redirect URI `http://127.0.0.1:8888/callback`, and paste the app’s client ID at the terminal prompt. Complete consent in the browser on the same machine. The CLI uses PKCE and stores configuration and tokens under `$XDG_CONFIG_HOME/spotifyctl` (default `~/.config/spotifyctl`).
